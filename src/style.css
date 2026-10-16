@@ -6,3 +6,92 @@ body {
 canvas {
   display: block;
 }
+
+.musicInformationsContainer {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+
+  display: flex;
+  flex-direction: column;
+
+  box-sizing: border-box;
+  width: 320px;
+  height: 120px;
+
+  border: solid 1px #fff;
+  background-color: #000;
+
+  padding: 16px;
+}
+
+h2 {
+  font-family: sans-serif;
+  font-size: 1.5em;
+  font-weight: 400;
+  color: #fff;
+  margin: 0;
+
+  /* titre trop long -> coupé avec "..." au lieu d'agrandir le cadre */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+p {
+  font-family: sans-serif;
+  font-size: 1em;
+  font-weight: 400;
+  color: #a0a0a0;
+  margin: 0;
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sliderContainer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: auto;
+}
+
+.playButton {
+  width: 64px;
+  flex-shrink: 0;
+  font-family: sans-serif;
+  font-size: 0.9em;
+  color: #fff;
+  background: none;
+  border: solid 1px #fff;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.playButton:hover {
+  background: #fff;
+  color: #000;
+}
+
+.slider {
+  position: relative;
+  flex: 1;
+  height: 4px;
+  background: #444;
+  cursor: pointer;
+}
+
+.sliderProgress {
+  width: 0%;
+  height: 100%;
+  background: #fff;
+}
+
+.time {
+  font-family: sans-serif;
+  font-size: 0.9em;
+  color: #a0a0a0;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}

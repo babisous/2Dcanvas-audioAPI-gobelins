@@ -8,7 +8,6 @@ let width;
 let height;
 const pixelRatio = Math.min(window.devicePixelRatio, 2);
 
-// temps / boucle
 let frameRequest;
 let time;
 let delta = 0;
@@ -17,10 +16,24 @@ let frame = 0;
 let stepTimer = 0;
 let currentArc; // l'arc en train d'être dessiné
 
-const audio = new Audio("/audio/son.mp3");
+// la musique jouée + ce qu'on affiche dans le cadre
+const music = {
+  src: "/audio/son.mp3",
+  title: "My Old Ways",
+  artist: "Tame Impala",
+};
+
+const audio = new Audio(music.src);
 audio.loop = true;
 
-// créés au premier clic (sinon le navigateur bloque)
+// éléments du cadre d'infos
+const titleElement = document.querySelector(".musicTitle h2");
+const artistElement = document.querySelector(".musicArtist p");
+const playButton = document.querySelector(".playButton");
+const slider = document.querySelector(".slider");
+const sliderProgress = document.querySelector(".sliderProgress");
+const timeElement = document.querySelector(".time");
+
 let audioContext;
 let analyser;
 let frequencies;
@@ -28,19 +41,18 @@ let waveform;
 
 const params = {
   color: "#ffffff",
-  opacity: 1,
-  lineWidth: 2,
+  opacity: 0.5,
+  lineWidth: 1,
   background: "#000000",
   baseRadius: 5,
-  sizeLevels: 3,
+  sizeLevels: 6,
   stepsPerSecond: 10,
   startFreq: 0,
   endFreq: 1024,
   volume: 1,
   sensitivity: 2,
-  symmetry: 6,
-  mirror: true,
   bounce: true,
+  margin: 5,
   playPause: toggleAudio,
   clear: clearCanvas,
   recenter: recenterPen,
@@ -55,10 +67,21 @@ const pen = {
 
 window.addEventListener("resize", resize);
 canvas.addEventListener("click", toggleAudio);
+playButton.addEventListener("click", toggleAudio);
+slider.addEventListener("click", seek);
+
+// l'audio prévient quand le temps avance / quand il démarre ou s'arrête
+audio.addEventListener("loadedmetadata", updateTime);
+audio.addEventListener("timeupdate", updateTime);
+audio.addEventListener("play", updatePlayButton);
+audio.addEventListener("pause", updatePlayButton);
+
+titleElement.textContent = music.title;
+artistElement.textContent = music.artist;
 
 resize();
 recenterPen();
-initGUI();
+// initGUI();
 
 function initGUI() {
   const gui = new GUI({ title: "AudioArt" });
@@ -71,12 +94,8 @@ function initGUI() {
 
   const arcs = gui.addFolder("Arcs");
   arcs.add(params, "baseRadius", 1, 100, 1).name("rayon de base");
-  arcs.add(params, "sizeLevels", 1, 5, 1).name("nb de tailles");
+  arcs.add(params, "sizeLevels", 1, 10, 1).name("nb de tailles");
   arcs.add(params, "stepsPerSecond", 0.1, 20, 0.1).name("Steps / Seconde");
-
-  const sym = gui.addFolder("Symétrie");
-  sym.add(params, "symmetry", 1, 12, 1).name("nb de branches");
-  sym.add(params, "mirror").name("miroir");
 
   const son = gui.addFolder("Son");
   son.add(params, "volume", 0, 1, 0.01).onChange(function (value) {
@@ -88,7 +107,8 @@ function initGUI() {
   son.add(params, "playPause").name("lecture / pause");
 
   const actions = gui.addFolder("Actions");
-  actions.add(params, "bounce").name("rebond sur les bords");
+  actions.add(params, "bounce").name("rester dans l'écran");
+  actions.add(params, "margin", 0, 300, 1).name("marge");
   actions.add(params, "clear").name("effacer");
   actions.add(params, "recenter").name("recentrer le stylo");
 }
@@ -119,6 +139,48 @@ function resize() {
 
   // pour que ce soit net sur écran retina
   context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+}
+
+function formatTime(seconds) {
+  if (isNaN(seconds)) {
+    return "0:00";
+  }
+  const minutes = Math.floor(seconds / 60);
+  let rest = Math.floor(seconds % 60);
+  if (rest < 10) {
+    rest = "0" + rest;
+  }
+  return minutes + ":" + rest;
+}
+
+function updateTime() {
+  timeElement.textContent =
+    formatTime(audio.currentTime) + " / " + formatTime(audio.duration);
+
+  // largeur de la barre = pourcentage écoulé
+  let percent = 0;
+  if (audio.duration > 0) {
+    percent = (audio.currentTime / audio.duration) * 100;
+  }
+  sliderProgress.style.width = percent + "%";
+}
+
+function updatePlayButton() {
+  if (audio.paused) {
+    playButton.textContent = "lecture";
+  } else {
+    playButton.textContent = "pause";
+  }
+}
+
+// clic sur la barre -> on saute à cet endroit du morceau
+function seek(event) {
+  if (!(audio.duration > 0)) {
+    return;
+  }
+  const rect = slider.getBoundingClientRect();
+  const ratio = (event.clientX - rect.left) / rect.width;
+  audio.currentTime = ratio * audio.duration;
 }
 
 function initAudio() {
@@ -205,21 +267,16 @@ function render() {
 
 // calcule le centre et les angles de l'arc à partir du stylo
 function prepareArc(arc) {
-  // le centre est à gauche ou à droite du stylo selon le sens
-  let side;
-  if (arc.clockwise) {
-    side = Math.PI / 2;
-  } else {
-    side = -Math.PI / 2;
-  }
+  placeCenter(arc);
 
-  arc.centerX = pen.x + Math.cos(pen.direction + side) * arc.radius;
-  arc.centerY = pen.y + Math.sin(pen.direction + side) * arc.radius;
+  if (params.bounce) {
+    keepInside(arc);
+  }
 
   // 1 quart = 90°
   arc.sweep = arc.quarters * (Math.PI / 2);
 
-  arc.startAngle = pen.direction - side;
+  arc.startAngle = pen.direction - arc.side;
   if (arc.clockwise) {
     arc.endAngle = arc.startAngle + arc.sweep;
   } else {
@@ -231,6 +288,45 @@ function prepareArc(arc) {
   return arc;
 }
 
+// le centre est à gauche ou à droite du stylo selon le sens
+function placeCenter(arc) {
+  if (arc.clockwise) {
+    arc.side = Math.PI / 2;
+  } else {
+    arc.side = -Math.PI / 2;
+  }
+
+  arc.centerX = pen.x + Math.cos(pen.direction + arc.side) * arc.radius;
+  arc.centerY = pen.y + Math.sin(pen.direction + arc.side) * arc.radius;
+}
+
+// vrai si le cercle de l'arc tient dans la zone autorisée
+// la zone est un cercle autour du milieu de l'écran
+function fitsInside(arc) {
+  const limit = Math.min(width, height) / 2 - params.margin;
+  const dx = arc.centerX - width / 2;
+  const dy = arc.centerY - height / 2;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+  return distance + arc.radius <= limit;
+}
+
+// si l'arc sortirait, on essaie l'autre sens, puis on réduit le rayon
+function keepInside(arc) {
+  if (fitsInside(arc)) {
+    return;
+  }
+
+  // 1. on tourne de l'autre côté
+  arc.clockwise = !arc.clockwise;
+  placeCenter(arc);
+
+  // 2. toujours trop grand -> on divise le rayon par 2 jusqu'à ce que ça rentre
+  while (!fitsInside(arc) && arc.radius > 1) {
+    arc.radius = arc.radius / 2;
+    placeCenter(arc);
+  }
+}
+
 // dessine le bout d'arc entre from et to (entre 0 et 1)
 function drawArcPart(arc, from, to) {
   // on convertit from / to (0 à 1) en vrais angles sur le cercle
@@ -238,35 +334,7 @@ function drawArcPart(arc, from, to) {
   const fromAngle = arc.startAngle + angleRange * from;
   const toAngle = arc.startAngle + angleRange * to;
 
-  // on redessine le même bout d'arc plusieurs fois en tournant autour du centre
-  for (let i = 0; i < params.symmetry; i++) {
-    // angle de cette branche (ex: 6 branches -> 0°, 60°, 120°...)
-    const angle = ((Math.PI * 2) / params.symmetry) * i;
-
-    // on garde l'état du canvas sans rotation
-    context.save();
-
-    // rotate tourne autour de (0,0) = coin en haut à gauche
-    // donc on va au centre, on tourne, et on revient
-    context.translate(width / 2, height / 2);
-    context.rotate(angle);
-    context.translate(-width / 2, -height / 2);
-
-    // même arc, mêmes coordonnées, mais le canvas est tourné
-    strokeArc(arc, fromAngle, toAngle);
-
-    // effet miroir : on retourne horizontalement
-    if (params.mirror) {
-      // pareil que rotate, scale part de (0,0) donc on passe par le centre
-      context.translate(width / 2, 0);
-      context.scale(-1, 1); // x inversé = gauche <-> droite
-      context.translate(-width / 2, 0);
-      strokeArc(arc, fromAngle, toAngle);
-    }
-
-    // on remet le canvas normal pour la branche suivante
-    context.restore();
-  }
+  strokeArc(arc, fromAngle, toAngle);
 }
 
 // le vrai tracé
@@ -293,29 +361,6 @@ function movePen(arc) {
     pen.direction = pen.direction + arc.sweep;
   } else {
     pen.direction = pen.direction - arc.sweep;
-  }
-
-  if (params.bounce) {
-    bouncePen();
-  }
-}
-
-// si le stylo sort de l'écran, on le renvoie vers l'intérieur
-function bouncePen() {
-  // cos = la partie horizontale de la direction (< 0 gauche, > 0 droite)
-  // sin = la partie verticale (< 0 haut, > 0 bas)
-  const dirX = Math.cos(pen.direction);
-  const dirY = Math.sin(pen.direction);
-
-  // bord gauche ou droit -> on inverse le horizontal
-  // on vérifie qu'il part bien vers l'extérieur, sinon il rebondirait en boucle
-  if ((pen.x < 0 && dirX < 0) || (pen.x > width && dirX > 0)) {
-    pen.direction = Math.PI - pen.direction;
-  }
-
-  // bord haut ou bas -> on inverse le vertical
-  if ((pen.y < 0 && dirY < 0) || (pen.y > height && dirY > 0)) {
-    pen.direction = -pen.direction;
   }
 }
 
